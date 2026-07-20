@@ -1,0 +1,14 @@
+{
+  "name": "darcobfuscator-api",
+  "version": "1.0.0",
+  "description": "Fastify web API for the Darc Luau obfuscator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "fastify": "^4.28.1"
+  }
+}

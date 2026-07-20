@@ -1,0 +1,10 @@
+__pycache__/
+.venv/
+node_modules/
+*.pyc
+.DS_Store
+env_log_output.lua
+input.lua
+output.lua
+message.txt
+luraphexample.luau
