@@ -167,8 +167,10 @@ diagnostic build), `--seed N` (deterministic naming). Reads stdin when `-`.
 ### Web API (Vercel)
 
 The repo is a zero-config **Vercel** Python deployment. `api/index.py` is a
-serverless function (stdlib only — no dependencies), `vercel.json` bundles the
-Lua templates, and `.vercelignore` keeps the upload small. Deploy with:
+serverless function that at runtime imports **only the standard library** plus
+the bundled `darcobfuscator` package (the `requirements.txt` deps are the bot's
+and go unused by the API), `vercel.json` bundles the Lua templates, and
+`.vercelignore` keeps the upload small. Deploy with:
 
 ```bash
 vercel deploy        # or: push to a Git repo connected to Vercel
@@ -204,14 +206,31 @@ The previous standalone Node/Fastify server is preserved under `server/`.
   you at the HTTP API instead (Roblox target is API-only).
 
 ```bash
-pip install -r requirements-bot.txt            # py-cord
-TOKEN=... python bot.py                         # or DISCORD_TOKEN=...
+pip install -r requirements.txt                 # py-cord + aiohttp
+TOKEN=... python bot.py                          # or DISCORD_TOKEN=...
 ```
 
 Enable the **Message Content** intent and invite with the `applications.commands`
-scope. Set `GUILD_IDS=123,456` for instant slash-command sync during testing,
-`API_URL` for the Roblox-build hint, and `MAX_BYTES` to cap uploads (default
-1 MB). Obfuscation runs off the event loop so the bot stays responsive.
+scope. Env vars (see `.env.example`): `TOKEN`, `GUILD_IDS=123,456` (instant
+slash-command sync while testing), `API_URL`, `MAX_BYTES` (default 1 MB).
+Obfuscation runs off the event loop so the bot stays responsive.
+
+**Obfuscation backend.** By default the bot obfuscates **in-process** (the
+`darcobfuscator` package ships in the repo). Set `OBF_BACKEND=api` and `API_URL`
+to your deployed endpoint and it obfuscates **through the HTTP API** instead
+(via `aiohttp`) — so the bot can be a thin front-end to the Vercel function.
+
+#### Deploying the bot (Railway / Render / Fly / a VPS)
+
+A Discord bot needs an **always-on** process (a persistent gateway connection),
+so it runs on a worker host — **not** on Vercel (which only serves the `/api`
+endpoint). The repo ships `Procfile` (`worker: python bot.py`) and `railway.json`
+(`startCommand: python bot.py`):
+
+1. New Railway project → **Deploy from GitHub repo**.
+2. Railway auto-installs `requirements.txt` and runs `python bot.py`.
+3. Add variables: `TOKEN` (required), and optionally `GUILD_IDS`, `API_URL`,
+   `OBF_BACKEND=api`, `MAX_BYTES`.
 
 ---
 
@@ -332,9 +351,10 @@ darcobfuscator/         Python engine (importable + `python -m`)
   serialize.py serialize_binary.py   # layered blob format + derived-key cipher
   obfuscator.py __main__.py          # pipeline + CLI
   templates/vm.lua templates/decoder.lua   # VM scaffolding (--@DISPATCH@ hole) + blob decoder
-api/index.py            Vercel serverless function (stdlib only)
-vercel.json requirements.txt .vercelignore   Vercel deployment config
-bot.py requirements-bot.txt   Discord bot (DM a file -> protected build)
+api/index.py            Vercel serverless function (API, stdlib + darcobfuscator)
+vercel.json .vercelignore   Vercel deployment config
+bot.py                  Discord bot (DM a file -> protected build)
+requirements.txt Procfile railway.json .env.example   bot deps + Railway deploy
 server/                 legacy Node/Fastify server
 examples/               sample input + protected output
 tests/                  lupa-based correctness harnesses

@@ -8,14 +8,38 @@ import discord
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from darcobfuscator import __version__
-from darcobfuscator.obfuscator import obfuscate
+try:
+    from darcobfuscator import __version__
+    from darcobfuscator.obfuscator import obfuscate as _local_obfuscate
+except Exception:
+    _local_obfuscate = None
+    __version__ = os.environ.get("FINE_VERSION", "2.9")
 
 TOKEN = os.environ.get("TOKEN") or os.environ.get("DISCORD_TOKEN")
 MAX_BYTES = int(os.environ.get("MAX_BYTES", "1000000"))
 API_URL = os.environ.get("API_URL", "https://<your-project>.vercel.app/api")
+OBF_BACKEND = os.environ.get("OBF_BACKEND", "local").lower()
 GUILD_IDS = [int(g) for g in os.environ.get("GUILD_IDS", "").replace(" ", "").split(",") if g.isdigit()] or None
 ALLOWED_EXT = (".lua", ".luau", ".txt")
+
+
+async def _obfuscate_api(source, opts):
+    import aiohttp
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+        async with session.post(API_URL, json={"source": source, "options": opts}) as resp:
+            data = await resp.json(content_type=None)
+            if resp.status != 200:
+                raise RuntimeError(str(data.get("error", f"API returned {resp.status}")))
+            return data["output"]
+
+
+async def _run_obfuscate(source, opts):
+    if OBF_BACKEND == "api":
+        return await _obfuscate_api(source, opts)
+    if _local_obfuscate is None:
+        raise RuntimeError("Local obfuscator unavailable — set OBF_BACKEND=api and API_URL.")
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _local_obfuscate(source, dict(opts)))
 
 BRAND = "fine"
 COL_PROC = 0x5865F2
@@ -172,8 +196,7 @@ async def _do(responder, name, data, opts, user):
         source = data.decode("utf-8", "replace")
         await asyncio.sleep(0.5)
         state["stage"], state["target"] = "Compiling & virtualizing", 62.0
-        loop = asyncio.get_event_loop()
-        output = await loop.run_in_executor(None, lambda: obfuscate(source, dict(opts)))
+        output = await _run_obfuscate(source, dict(opts))
         state["stage"], state["target"] = "Encrypting & packaging", 95.0
         await asyncio.sleep(0.35)
     except SyntaxError as e:
