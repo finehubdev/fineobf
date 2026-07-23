@@ -8,3 +8,5 @@ input.lua
 output.lua
 message.txt
 luraphexample.luau
+.env
+.env.*
