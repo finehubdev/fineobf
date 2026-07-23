@@ -193,20 +193,25 @@ The previous standalone Node/Fastify server is preserved under `server/`.
 
 ### Discord bot
 
-`bot.py` is a Discord bot: **DM it a `.lua` / `.luau` file and it replies with a
-protected single-line build**, with an animated progress embed (spinner +
-filling bar + stages) and buttons under the result to rebuild for a different
-profile or re-roll the seed. Add the word `executor` in your message to build
-for exploit-executor distribution.
+`bot.py` is a Discord bot (py-cord):
+
+- **DM it a `.lua` / `.luau` file** → it replies with a protected single-line
+  **executor** build, with an animated progress embed (spinner + filling bar +
+  stages) and *Rebuild* / *Variant* buttons under the result.
+- **`/obfuscate`** (server slash command) uploads a file and **asks you to pick a
+  build variant** (Executor, Executor · silent-fail, Executor · any-environment).
+- **Roblox** builds are **not** produced by the bot — the *Roblox* variant points
+  you at the HTTP API instead (Roblox target is API-only).
 
 ```bash
-./.venv/bin/pip install -r requirements-bot.txt   # discord.py
-DISCORD_TOKEN=... ./.venv/bin/python bot.py
+pip install -r requirements-bot.txt            # py-cord
+TOKEN=... python bot.py                         # or DISCORD_TOKEN=...
 ```
 
-Enable the **Message Content** intent in the Discord Developer Portal. `MAX_BYTES`
-(env) caps the upload size (default 1 MB). Obfuscation runs off the event loop so
-the bot stays responsive.
+Enable the **Message Content** intent and invite with the `applications.commands`
+scope. Set `GUILD_IDS=123,456` for instant slash-command sync during testing,
+`API_URL` for the Roblox-build hint, and `MAX_BYTES` to cap uploads (default
+1 MB). Obfuscation runs off the event loop so the bot stays responsive.
 
 ---
 
