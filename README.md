@@ -191,6 +191,23 @@ locally with `vercel dev`.
 
 The previous standalone Node/Fastify server is preserved under `server/`.
 
+### Discord bot
+
+`bot.py` is a Discord bot: **DM it a `.lua` / `.luau` file and it replies with a
+protected single-line build**, with an animated progress embed (spinner +
+filling bar + stages) and buttons under the result to rebuild for a different
+profile or re-roll the seed. Add the word `executor` in your message to build
+for exploit-executor distribution.
+
+```bash
+./.venv/bin/pip install -r requirements-bot.txt   # discord.py
+DISCORD_TOKEN=... ./.venv/bin/python bot.py
+```
+
+Enable the **Message Content** intent in the Discord Developer Portal. `MAX_BYTES`
+(env) caps the upload size (default 1 MB). Obfuscation runs off the event loop so
+the bot stays responsive.
+
 ---
 
 ## Threat model — read this
@@ -312,6 +329,7 @@ darcobfuscator/         Python engine (importable + `python -m`)
   templates/vm.lua templates/decoder.lua   # VM scaffolding (--@DISPATCH@ hole) + blob decoder
 api/index.py            Vercel serverless function (stdlib only)
 vercel.json requirements.txt .vercelignore   Vercel deployment config
+bot.py requirements-bot.txt   Discord bot (DM a file -> protected build)
 server/                 legacy Node/Fastify server
 examples/               sample input + protected output
 tests/                  lupa-based correctness harnesses
