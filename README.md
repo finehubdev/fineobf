@@ -176,49 +176,76 @@ and go unused by the API), `vercel.json` bundles the Lua templates, and
 vercel deploy        # or: push to a Git repo connected to Vercel
 ```
 
-Then:
+Every build is an **executor** build (the standalone Roblox-client target has
+been retired). A successful obfuscate is **stored server-side** and handed back
+as a ready-to-run loadstring plus a private management key:
 
 ```bash
 curl -X POST https://<your-project>.vercel.app/api \
   -H 'content-type: application/json' \
-  -d '{"source":"print(\"hi\")\nreturn 1", "options":{"target":"executor"}}'
-# → { "output": "--[[ obfuscated with fine v2.9 ]] …", "bytes": 1234 }
+  -d '{"source":"print(\"hi\")", "options":{"name":"Inferno Duels","silent":false,"fast":false}}'
+# → {
+#     "name": "Inferno Duels",
+#     "url": "https://<your-project>.vercel.app/loaders/<md5>.lua",
+#     "loadstring": "loadstring(game:HttpGet(\"…/loaders/<md5>.lua\"))()",
+#     "script_id": "<private key — shown once>",
+#     "output": "--[[ obfuscated with fine v2.9 ]] …",
+#     "bytes": 1234
+#   }
 ```
 
-`GET /api` returns `{ "name": "fine", "version": …, "status": "ok" }`.
-`options` accepts the same switches as the CLI (`roblox_check`, `anti_tamper`,
-`rename`, `on_fail`, `diagnostic`, `target`, `anti_log`, `seed`); unknown keys
-are ignored. `MAX_BYTES` (env) caps the request body (default 1 MB). Run it
+- `GET /loaders/<md5>.lua` streams the stored build (this is what the
+  loadstring fetches). Frozen scripts return `423`; deleted/unknown return `404`.
+- **`options`** accepts `name`, `silent` (no prints), `fast` (drop some checks
+  for a quicker load — weaker protection), plus `rename`, `on_fail`, `seed`;
+  `target` is forced to `executor`. Unknown keys are ignored.
+- **Management** — POST with an `action` and your `script_id` (never expires
+  server-side; keep it private):
+  - `{"action":"update","script_id":"…","source":"…","options":{…}}` — re-obfuscate
+    behind the **same** loadstring URL.
+  - `{"action":"freeze"|"unfreeze","script_id":"…"}` — pause / resume the loader.
+  - `{"action":"delete","script_id":"…"}` — kill the loadstring.
+  - `{"action":"info","script_id":"…"}` — name, URL, frozen state, size.
+
+`GET /api` returns `{ "name", "version", "status", "storage" }` where `storage`
+is `kv` or `ephemeral`. **Persistent storage** uses Vercel KV / Upstash Redis
+(`KV_REST_API_URL` + `KV_REST_API_TOKEN`); without them loaders live in memory
+and vanish on redeploy. `PUBLIC_BASE_URL` overrides the loadstring host (else the
+request `Host` is used). `MAX_BYTES` caps the request body (default 1 MB). Run it
 locally with `vercel dev`.
 
 The previous standalone Node/Fastify server is preserved under `server/`.
 
 ### Discord bot
 
-`bot.py` is a Discord bot (py-cord):
+`bot.py` is a Discord bot (py-cord). Every build is an **executor** build, hosted
+on your API and returned as a loadstring:
 
-- **DM it a `.lua` / `.luau` file** → it replies with a protected single-line
-  **executor** build, with an animated progress embed (spinner + filling bar +
-  stages) and *Rebuild* / *Variant* buttons under the result.
-- **`/obfuscate`** (server slash command) uploads a file and **asks you to pick a
-  build variant** (Executor, Executor · silent-fail, Executor · any-environment).
-- **Roblox** builds are **not** produced by the bot — the *Roblox* variant points
-  you at the HTTP API instead (Roblox target is API-only).
+- **DM it a `.lua` / `.luau` file** (or run **`/obfuscate`** in a server) →
+  a **config** step lets you toggle **Silent Mode** (no prints) and **Fast Mode**
+  (fewer checks, faster load — with an on-screen warning), then a modal asks for
+  the **script name** (e.g. `Inferno Duels`).
+- On finish it returns, with an animated progress embed: the protected file, the
+  **loadstring** (`loadstring(game:HttpGet("…/loaders/<md5>.lua"))()`), and a
+  **private script key** shown once. At runtime the script prints
+  `"<name> loaded successfully (obfuscated with fine v…)"` unless silent.
+- **`/manage`** updates / freezes / unfreezes / deletes a script by its key — the
+  loadstring URL never changes across updates. The result message also carries
+  **Freeze** and **Delete** buttons. In servers the whole flow is **ephemeral**.
 
 ```bash
 pip install -r requirements.txt                 # py-cord + aiohttp
-TOKEN=... python bot.py                          # or DISCORD_TOKEN=...
+TOKEN=... OBF_BACKEND=api API_URL=… python bot.py
 ```
 
 Enable the **Message Content** intent and invite with the `applications.commands`
 scope. Env vars (see `.env.example`): `TOKEN`, `GUILD_IDS=123,456` (instant
-slash-command sync while testing), `API_URL`, `MAX_BYTES` (default 1 MB).
-Obfuscation runs off the event loop so the bot stays responsive.
+slash-command sync while testing), `MAX_BYTES` (default 1 MB).
 
-**Obfuscation backend.** By default the bot obfuscates **in-process** (the
-`darcobfuscator` package ships in the repo). Set `OBF_BACKEND=api` and `API_URL`
-to your deployed endpoint and it obfuscates **through the HTTP API** instead
-(via `aiohttp`) — so the bot can be a thin front-end to the Vercel function.
+**Backend.** Hosted loaders and `/manage` require the API: set `OBF_BACKEND=api`
+and `API_URL` to your deployed endpoint (the bot talks to it via `aiohttp`).
+With the default `OBF_BACKEND=local` the bot still obfuscates in-process and
+returns the file, but there is no loadstring or script key (nothing is hosted).
 
 #### Deploying the bot (Railway / Render / Fly / a VPS)
 
@@ -229,8 +256,8 @@ endpoint). The repo ships `Procfile` (`worker: python bot.py`) and `railway.json
 
 1. New Railway project → **Deploy from GitHub repo**.
 2. Railway auto-installs `requirements.txt` and runs `python bot.py`.
-3. Add variables: `TOKEN` (required), and optionally `GUILD_IDS`, `API_URL`,
-   `OBF_BACKEND=api`, `MAX_BYTES`.
+3. Add variables: `TOKEN` (required), `OBF_BACKEND=api` + `API_URL` (required for
+   hosted loaders / `/manage`), and optionally `GUILD_IDS`, `MAX_BYTES`.
 
 ---
 

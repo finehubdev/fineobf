@@ -1,29 +1,50 @@
 from http.server import BaseHTTPRequestHandler
+import hashlib
 import json
 import os
+import secrets
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from darcobfuscator import __version__
 from darcobfuscator.obfuscator import obfuscate
+import fine_store
 
-_ALLOWED = {
-    "roblox_check", "anti_tamper", "rename", "on_fail", "diagnostic",
-    "target", "anti_log", "seed",
-}
+_ALLOWED = {"name", "silent", "fast", "rename", "on_fail", "seed"}
 _MAX_BYTES = int(os.environ.get("MAX_BYTES", "1000000"))
 
 
 def _clean(options):
     if not isinstance(options, dict):
         return {}
-    return {k: v for k, v in options.items() if k in _ALLOWED}
+    opts = {k: v for k, v in options.items() if k in _ALLOWED}
+    opts["target"] = "executor"
+    return opts
+
+
+def _build(source, options):
+    return obfuscate(source, _clean(options))
+
+
+def _base(handler):
+    env = os.environ.get("PUBLIC_BASE_URL")
+    if env:
+        return env.rstrip("/")
+    host = handler.headers.get("host") or "localhost"
+    proto = handler.headers.get("x-forwarded-proto") or (
+        "http" if host.startswith("localhost") or host.startswith("127.") else "https")
+    return proto + "://" + host
+
+
+def _loadstring(url):
+    return 'loadstring(game:HttpGet("' + url + '"))()'
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self._json(200, {"name": "fine", "version": __version__, "status": "ok"})
+        self._json(200, {"name": "fine", "version": __version__, "status": "ok",
+                         "storage": "kv" if fine_store.enabled() else "ephemeral"})
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -41,16 +62,84 @@ class handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length) or b"{}")
         except Exception:
             return self._json(400, {"error": "invalid JSON body"})
+
+        action = payload.get("action")
+        if action and action != "obfuscate":
+            return self._manage(action, payload)
+        return self._obfuscate(payload)
+
+    def _obfuscate(self, payload):
         source = payload.get("source")
         if not isinstance(source, str) or not source.strip():
             return self._json(400, {"error": "missing 'source'"})
+        options = payload.get("options") or {}
+        name = options.get("name") or payload.get("name") or "script"
         try:
-            output = obfuscate(source, _clean(payload.get("options")))
+            output = _build(source, {**options, "name": name})
         except SyntaxError as e:
             return self._json(400, {"error": "syntax error: " + str(e)})
         except Exception as e:
             return self._json(500, {"error": str(e)})
-        self._json(200, {"output": output, "bytes": len(output)})
+
+        loader_hash = hashlib.md5(secrets.token_bytes(16)).hexdigest()
+        script_id = secrets.token_urlsafe(24)
+        try:
+            fine_store.save_loader(loader_hash, script_id, output, name)
+        except Exception as e:
+            return self._json(502, {"error": "storage unavailable: " + str(e)})
+
+        url = _base(self) + "/loaders/" + loader_hash + ".lua"
+        self._json(200, {
+            "name": name,
+            "url": url,
+            "loadstring": _loadstring(url),
+            "script_id": script_id,
+            "output": output,
+            "bytes": len(output),
+            "ephemeral_storage": not fine_store.enabled(),
+        })
+
+    def _manage(self, action, payload):
+        script_id = payload.get("script_id")
+        if not isinstance(script_id, str) or not script_id:
+            return self._json(400, {"error": "missing 'script_id'"})
+        loader_hash, record = fine_store.resolve_sid(script_id)
+        if not record:
+            return self._json(404, {"error": "unknown or expired script_id"})
+        url = _base(self) + "/loaders/" + loader_hash + ".lua"
+
+        if action == "info":
+            return self._json(200, {
+                "name": record.get("name"), "url": url,
+                "loadstring": _loadstring(url), "frozen": record.get("frozen", False),
+                "created": record.get("created"), "updated": record.get("updated"),
+                "bytes": len(record.get("code") or ""),
+            })
+        if action == "delete":
+            fine_store.remove(loader_hash, script_id)
+            return self._json(200, {"deleted": True})
+        if action in ("freeze", "unfreeze"):
+            fine_store.set_frozen(loader_hash, record, action == "freeze")
+            return self._json(200, {"frozen": action == "freeze", "url": url})
+        if action == "update":
+            source = payload.get("source")
+            if not isinstance(source, str) or not source.strip():
+                return self._json(400, {"error": "missing 'source'"})
+            options = payload.get("options") or {}
+            name = options.get("name") or record.get("name") or "script"
+            try:
+                output = _build(source, {**options, "name": name})
+            except SyntaxError as e:
+                return self._json(400, {"error": "syntax error: " + str(e)})
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
+            record["name"] = name
+            fine_store.update_code(loader_hash, record, output)
+            return self._json(200, {
+                "updated": True, "name": name, "url": url,
+                "loadstring": _loadstring(url), "output": output, "bytes": len(output),
+            })
+        return self._json(400, {"error": "unknown action: " + str(action)})
 
     def _cors(self):
         self.send_header("access-control-allow-origin", "*")

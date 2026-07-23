@@ -31,6 +31,13 @@ def main(argv=None):
     ap.add_argument("--diagnose", action="store_true",
                     help="emit a descriptive error naming which guard failed "
                          "(for testing why a build refuses to run; do not ship)")
+    ap.add_argument("--name", help="script name; prints "
+                                   "'<name> loaded successfully (obfuscated with fine v...)' at load")
+    ap.add_argument("--silent", action="store_true",
+                    help="silent mode: no load banner / prints")
+    ap.add_argument("--fast", action="store_true",
+                    help="fast mode: drop some security checks for a quicker load "
+                         "(WARNING: weaker protection)")
     ap.add_argument("--seed", type=int, help="deterministic naming seed")
     args = ap.parse_args(argv)
 
@@ -48,6 +55,9 @@ def main(argv=None):
         "diagnostic": args.diagnose,
         "target": "executor" if args.executor else "roblox",
         "anti_log": args.anti_log,
+        "name": args.name,
+        "silent": args.silent,
+        "fast": args.fast,
         "seed": args.seed,
     }
 
