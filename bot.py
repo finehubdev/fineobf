@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from darcobfuscator import __version__
 from darcobfuscator.obfuscator import obfuscate
 
-TOKEN = os.environ.get("DISCORD_TOKEN")
+TOKEN = os.environ.get("TOKEN")
 MAX_BYTES = int(os.environ.get("MAX_BYTES", "1000000"))
 ALLOWED_EXT = (".lua", ".luau", ".txt")
 
@@ -27,6 +27,10 @@ STAGE_ICON = "◆"
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
+
+
+def _interaction(a, b):
+    return a if hasattr(a, "response") else b
 
 
 def _bar(pct, width=20):
@@ -169,16 +173,16 @@ class ResultView(discord.ui.View):
         self.stop()
 
     @discord.ui.button(label="Roblox build", emoji="\U0001f7e6", style=discord.ButtonStyle.primary)
-    async def roblox(self, interaction, button):
-        await self._rebuild(interaction, {})
+    async def roblox(self, a, b):
+        await self._rebuild(_interaction(a, b), {})
 
     @discord.ui.button(label="Executor build", emoji="⚙️", style=discord.ButtonStyle.secondary)
-    async def executor(self, interaction, button):
-        await self._rebuild(interaction, {"target": "executor"})
+    async def executor(self, a, b):
+        await self._rebuild(_interaction(a, b), {"target": "executor"})
 
     @discord.ui.button(label="New seed", emoji="\U0001f3b2", style=discord.ButtonStyle.secondary)
-    async def reroll(self, interaction, button):
-        await self._rebuild(interaction, dict(self.opts))
+    async def reroll(self, a, b):
+        await self._rebuild(_interaction(a, b), dict(self.opts))
 
 
 @client.event
