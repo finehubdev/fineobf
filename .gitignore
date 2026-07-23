@@ -10,3 +10,4 @@ message.txt
 luraphexample.luau
 .env
 .env.*
+!.env.example
