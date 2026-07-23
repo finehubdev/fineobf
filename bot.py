@@ -108,9 +108,9 @@ async def _animate(msg, state):
         await asyncio.sleep(0.85)
 
 
-async def _do(msg, name, data, opts, user):
+async def _do(channel, status, name, data, opts, user):
     state = {"stage": "Reading source", "pct": 2.0, "target": 22.0, "done": False}
-    anim = asyncio.create_task(_animate(msg, state))
+    anim = asyncio.create_task(_animate(status, state))
     start = time.time()
     try:
         source = data.decode("utf-8", "replace")
@@ -119,31 +119,30 @@ async def _do(msg, name, data, opts, user):
         loop = asyncio.get_event_loop()
         output = await loop.run_in_executor(None, lambda: obfuscate(source, dict(opts)))
         state["stage"], state["target"] = "Encrypting & packaging", 95.0
-        await asyncio.sleep(0.55)
+        await asyncio.sleep(0.4)
     except SyntaxError as e:
         state["done"] = True
         anim.cancel()
-        await msg.edit(embed=_err_embed(f"Syntax error in your script:\n```\n{str(e)[:400]}\n```"), attachments=[])
+        await status.edit(embed=_err_embed(f"Syntax error in your script:\n```\n{str(e)[:400]}\n```"))
         return
     except Exception as e:
         state["done"] = True
         anim.cancel()
-        await msg.edit(embed=_err_embed(f"```\n{str(e)[:400]}\n```"), attachments=[])
+        await status.edit(embed=_err_embed(f"```\n{str(e)[:400]}\n```"))
         return
     state["pct"], state["target"], state["done"] = 100.0, 100.0, True
     anim.cancel()
-    try:
-        await msg.edit(embed=_proc_embed("✨", "Done", 100.0))
-    except discord.HTTPException:
-        pass
-    await asyncio.sleep(0.3)
     elapsed = time.time() - start
     base = name.rsplit(".", 1)[0]
     out_name = f"{base}.obfuscated.lua"
     payload = output.encode("utf-8")
     file = discord.File(io.BytesIO(payload), filename=out_name)
     view = ResultView(user.id, name, data, opts)
-    await msg.edit(embed=_ok_embed(name, len(data), len(payload), elapsed, opts), attachments=[file], view=view)
+    await channel.send(embed=_ok_embed(name, len(data), len(payload), elapsed, opts), file=file, view=view)
+    try:
+        await status.delete()
+    except discord.HTTPException:
+        pass
 
 
 class ResultView(discord.ui.View):
@@ -163,8 +162,10 @@ class ResultView(discord.ui.View):
     async def _rebuild(self, interaction, opts):
         for c in self.children:
             c.disabled = True
-        await interaction.response.edit_message(embed=_proc_embed(SPIN[0], "Starting rebuild", 4.0), attachments=[], view=None)
-        await _do(interaction.message, self.name, self.data, opts, interaction.user)
+        await interaction.response.edit_message(view=self)
+        channel = interaction.message.channel
+        status = await channel.send(embed=_proc_embed(SPIN[0], "Starting rebuild", 4.0))
+        await _do(channel, status, self.name, self.data, opts, interaction.user)
         self.stop()
 
     @discord.ui.button(label="Roblox build", emoji="\U0001f7e6", style=discord.ButtonStyle.primary)
@@ -211,7 +212,7 @@ async def on_message(message):
     if "executor" in (message.content or "").lower():
         opts["target"] = "executor"
     status = await message.channel.send(embed=_proc_embed(SPIN[0], "Queued", 1.0))
-    await _do(status, att.filename, data, opts, message.author)
+    await _do(message.channel, status, att.filename, data, opts, message.author)
 
 
 def main():
