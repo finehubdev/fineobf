@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 import sys
+from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -41,10 +42,51 @@ def _loadstring(url):
     return 'loadstring(game:HttpGet("' + url + '"))()'
 
 
+def _loader_hash(path, query):
+    raw = ""
+    q = parse_qs(query)
+    if q.get("file"):
+        raw = q["file"][0]
+    elif q.get("h"):
+        raw = q["h"][0]
+    else:
+        raw = path.rsplit("/", 1)[-1]
+    if raw.endswith(".lua"):
+        raw = raw[:-4]
+    return "".join(c for c in raw if c in "0123456789abcdef")
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/loaders/") or parsed.path.rstrip("/").endswith("/loader"):
+            return self._serve_loader(parsed.path, parsed.query)
         self._json(200, {"name": "fine", "version": __version__, "status": "ok",
                          "storage": "postgres" if fine_store.enabled() else "ephemeral"})
+
+    def _serve_loader(self, path, query):
+        loader_hash = _loader_hash(path, query)
+        if not loader_hash:
+            return self._text(404, "-- not found")
+        try:
+            record = fine_store.load_loader(loader_hash)
+        except Exception as e:
+            return self._text(502, "-- storage error: " + str(e))
+        if not record:
+            return self._text(404, "-- not found")
+        if record.get("frozen"):
+            return self._text(423, "-- this script is frozen by its owner")
+        self._text(200, record.get("code") or "")
+
+    def _text(self, code, body):
+        data = body.encode()
+        self.send_response(code)
+        self.send_header("content-type", "text/plain; charset=utf-8")
+        self.send_header("content-length", str(len(data)))
+        self.send_header("access-control-allow-origin", "*")
+        self.send_header("cache-control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_OPTIONS(self):
         self.send_response(204)

@@ -2,14 +2,9 @@
   "functions": {
     "api/index.py": {
       "includeFiles": "{darcobfuscator/**,fine_store.py}"
-    },
-    "api/loader.py": {
-      "includeFiles": "fine_store.py"
     }
   },
   "rewrites": [
-    { "source": "/", "destination": "/api/index" },
-    { "source": "/obfuscate", "destination": "/api/index" },
-    { "source": "/loaders/(.*)", "destination": "/api/loader?file=$1" }
+    { "source": "/(.*)", "destination": "/api/index" }
   ]
 }
