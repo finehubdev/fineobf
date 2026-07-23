@@ -119,8 +119,9 @@ def _loader_embed(script_name, loadstring, ephemeral_storage):
                                    "This URL always serves the **latest** version you upload."))
     if ephemeral_storage:
         e.add_field(name="⚠️ Storage not configured",
-                    value=("The API has no KV store attached, so this loader is **temporary** and "
-                           "will vanish on the next redeploy. Add Vercel KV / Upstash to persist it."),
+                    value=("The API has no database attached, so this loader is **temporary** and "
+                           "will vanish on the next redeploy. Attach Neon Postgres "
+                           "(`DATABASE_URL`) to persist it."),
                     inline=False)
     e.set_footer(text=f"{BRAND} v{__version__}")
     return e

@@ -208,11 +208,12 @@ curl -X POST https://<your-project>.vercel.app/api \
   - `{"action":"info","script_id":"…"}` — name, URL, frozen state, size.
 
 `GET /api` returns `{ "name", "version", "status", "storage" }` where `storage`
-is `kv` or `ephemeral`. **Persistent storage** uses Vercel KV / Upstash Redis
-(`KV_REST_API_URL` + `KV_REST_API_TOKEN`); without them loaders live in memory
-and vanish on redeploy. `PUBLIC_BASE_URL` overrides the loadstring host (else the
-request `Host` is used). `MAX_BYTES` caps the request body (default 1 MB). Run it
-locally with `vercel dev`.
+is `postgres` or `ephemeral`. **Persistent storage** uses **Neon serverless
+Postgres** (add the Neon integration on the Vercel project — it sets
+`DATABASE_URL`; the `fine_loaders` table is created on first use). Without it
+loaders live in memory and vanish on redeploy. `PUBLIC_BASE_URL` overrides the
+loadstring host (else the request `Host` is used). `MAX_BYTES` caps the request
+body (default 1 MB). Run it locally with `vercel dev`.
 
 The previous standalone Node/Fastify server is preserved under `server/`.
 

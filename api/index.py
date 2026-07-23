@@ -44,7 +44,7 @@ def _loadstring(url):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._json(200, {"name": "fine", "version": __version__, "status": "ok",
-                         "storage": "kv" if fine_store.enabled() else "ephemeral"})
+                         "storage": "postgres" if fine_store.enabled() else "ephemeral"})
 
     def do_OPTIONS(self):
         self.send_response(204)
