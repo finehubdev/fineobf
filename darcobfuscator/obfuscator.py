@@ -33,6 +33,25 @@ def bytes_to_lua_string(bs: bytes) -> str:
     out.append('"')
     return "".join(out)
 
+def lua_literal(s: str) -> str:
+    out = ['"']
+    for ch in s:
+        o = ord(ch)
+        if ch == '"':
+            out.append('\\"')
+        elif ch == "\\":
+            out.append("\\\\")
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif o < 32:
+            out.append("\\%d" % o)
+        else:
+            out.append(ch)
+    out.append('"')
+    return "".join(out)
+
 def quote_base85(s: str) -> str:
     out = ['"']
     for ch in s:
@@ -400,6 +419,16 @@ def obfuscate(source: str, opts: dict | None = None) -> str:
     if opts.get("target") == "executor":
         opts = {**opts, "anti_tamper": False}
 
+    fast = bool(opts.get("fast"))
+    if fast:
+        opts = {**opts, "roblox_check": False}
+
+    silent = bool(opts.get("silent"))
+    name = opts.get("name")
+    if name and not silent:
+        banner = f"{name} loaded successfully (obfuscated with fine v{__version__})"
+        source = f"print({lua_literal(banner)});\n{source}"
+
     seed = opts.get("seed")
     gen = NameGen(seed)
     rng = gen.rng
@@ -407,6 +436,8 @@ def obfuscate(source: str, opts: dict | None = None) -> str:
     anti_log = opts.get("anti_log")
     if anti_log is None:
         anti_log = opts.get("target") == "executor"
+    if fast:
+        anti_log = False
     if anti_log:
         source = decoy_prelude(rng) + source
 
@@ -418,7 +449,8 @@ def obfuscate(source: str, opts: dict | None = None) -> str:
     proto = compile_source_to_proto(parse(source))
     shuffle_constants(proto, rng)
     apply_fusions(proto, fusion_map)
-    scramble_cfg(proto, rng)
+    if not fast:
+        scramble_cfg(proto, rng)
     enc = encode_program(proto, opmap, rng)
 
     decoder = _read_template("decoder.lua")
