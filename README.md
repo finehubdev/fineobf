@@ -194,18 +194,45 @@ curl -X POST https://<your-project>.vercel.app/api \
 #   }
 ```
 
-- `GET /loaders/<md5>.lua` streams the stored build (this is what the
-  loadstring fetches). Frozen scripts return `423`; deleted/unknown return `404`.
+- `GET /loaders/<md5>.lua` returns a small **gateway** that reads the user's
+  `script_key` global, computes their HWID, and calls `/verify`. Frozen scripts
+  hand back a `:Kick(...)` snippet; deleted/unknown return `404`.
+- `GET /verify/<md5>?key=&hwid=` is the licensing check. It returns **runnable
+  Lua** either way: the real obfuscated payload on success, or a
+  `LocalPlayer:Kick("Fineobf: …")` snippet on failure — so the gateway just
+  `loadstring`s the response. The real code is never sent unless the key passes.
 - **`options`** accepts `name`, `silent` (no prints), `fast` (drop some checks
-  for a quicker load — weaker protection), plus `rename`, `on_fail`, `seed`;
-  `target` is forced to `executor`. Unknown keys are ignored.
+  for a quicker load — weaker protection), `free` (no key required), plus
+  `rename`, `on_fail`, `seed`; `target` is forced to `executor`. Pass `owner`
+  (a Discord id) alongside `source` to record ownership. Unknown keys are ignored.
 - **Management** — POST with an `action` and your `script_id` (never expires
   server-side; keep it private):
-  - `{"action":"update","script_id":"…","source":"…","options":{…}}` — re-obfuscate
-    behind the **same** loadstring URL.
-  - `{"action":"freeze"|"unfreeze","script_id":"…"}` — pause / resume the loader.
-  - `{"action":"delete","script_id":"…"}` — kill the loadstring.
-  - `{"action":"info","script_id":"…"}` — name, URL, frozen state, size.
+  - `update` — re-obfuscate behind the **same** loadstring URL.
+  - `freeze` / `unfreeze` — pause / resume the loader.
+  - `set_free {free}` — toggle whether a key is required.
+  - `genkey {count,label}` / `delkey {key}` / `listkeys` — mint / remove / list keys.
+  - `whitelist` / `blacklist` / `unlist {discord_id}`, `listacl` — access control.
+  - `delete` — kill the loadstring. `info` — name, URL, free/frozen, key count.
+
+#### Key system (HWID-locked licensing)
+
+Distributed loadstrings look like `script_key="…"` then the loader. On run the
+gateway sends the key + HWID (`RbxAnalyticsService:GetClientId()`, falling back to
+`gethwid()`) to `/verify`, which:
+
+- **free project** → returns the payload, no key needed;
+- **no key** → `Kick("Fineobf: No Key Provided.")`;
+- **bad key** → `Kick("Fineobf: Invalid Key.")`;
+- **first run** → binds the key to that HWID; a different HWID later →
+  `Kick("Fineobf: HWID Mismatch")`;
+- blacklisted redeemer → `Kick("Fineobf: Access Revoked.")`.
+
+Users reset their own HWID **once per 2 days**. **Public panel actions** (POST
+`panel_info` / `redeem` / `get_script` / `reset_hwid` / `buyer_check` /
+`key_info`, keyed by the public `project` id + a `discord_id`) are what the
+Discord `/panel` buttons call; set **`BOT_SHARED_SECRET`** on both the API and the
+bot so only the bot can invoke them. Tables `fine_keys` and `fine_acl` are created
+automatically.
 
 `GET /api` returns `{ "name", "version", "status", "storage" }` where `storage`
 is `postgres` or `ephemeral`. **Persistent storage** uses **Neon serverless
@@ -223,25 +250,32 @@ The previous standalone Node/Fastify server is preserved under `server/`.
 on your API and returned as a loadstring:
 
 - **DM it a `.lua` / `.luau` file** (or run **`/obfuscate`** in a server) →
-  a **config** step lets you toggle **Silent Mode** (no prints) and **Fast Mode**
-  (fewer checks, faster load — with an on-screen warning), then a modal asks for
-  the **script name** (e.g. `Inferno Duels`).
+  a **config** step lets you toggle **Silent Mode** (no prints), **Fast Mode**
+  (fewer checks, faster load — with an on-screen warning), and **Free / Key**
+  (whether a key is required), then a modal asks for the **script name**.
 - On finish it returns, with an animated progress embed: the protected file, the
-  **loadstring** (`loadstring(game:HttpGet("…/loaders/<md5>.lua"))()`), and a
-  **private script key** shown once. At runtime the script prints
-  `"<name> loaded successfully (obfuscated with fine v…)"` unless silent.
-- **`/manage`** updates / freezes / unfreezes / deletes a script by its key — the
-  loadstring URL never changes across updates. The result message also carries
-  **Freeze** and **Delete** buttons. In servers the whole flow is **ephemeral**.
+  **loadstring**, a private **owner key**, and the public **project ID**. At
+  runtime the script prints `"<name> loaded successfully …"` unless silent.
+- **Owner commands** (by owner key): **`/manage`** (update / freeze / free /
+  paid / delete / info), **`/keys`** (generate / list / delete), **`/access`**
+  (whitelist / blacklist / clear / list). In servers these are **ephemeral**.
+- **`/panel <project_id> <buyer_role>`** posts a **public control panel** —
+  *Redeem Key, Get Script, Reset HWID, Get Buyer Role, Key Info*. Every user
+  self-services their own key; **Get Script** hands back the loadstring with their
+  `script_key="…"` already filled in. *Get Buyer Role* needs the bot's role above
+  the buyer role and **Manage Roles**. (Panels are live for the bot's uptime;
+  re-post after a restart — durable panels are a planned follow-up.)
 
 ```bash
 pip install -r requirements.txt                 # py-cord + aiohttp
 TOKEN=... OBF_BACKEND=api API_URL=… python bot.py
 ```
 
-Enable the **Message Content** intent and invite with the `applications.commands`
-scope. Env vars (see `.env.example`): `TOKEN`, `GUILD_IDS=123,456` (instant
-slash-command sync while testing), `MAX_BYTES` (default 1 MB).
+Enable the **Message Content** intent (and **Server Members** for role grants),
+invite with the `applications.commands` + `bot` scopes, and give the bot **Manage
+Roles**. Env vars (see `.env.example`): `TOKEN`, `GUILD_IDS=123,456` (instant
+slash-command sync while testing), `MAX_BYTES`, and `BOT_SHARED_SECRET` (must
+match the API, to authorise `/panel` actions).
 
 **Backend.** Hosted loaders and `/manage` require the API: set `OBF_BACKEND=api`
 and `API_URL` to your deployed endpoint (the bot talks to it via `aiohttp`).
