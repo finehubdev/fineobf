@@ -116,10 +116,18 @@ def _ok_embed(name, script_name, in_bytes, out_bytes, secs, silent, fast):
     return e
 
 
+def _loader_lines(desktop):
+    mobile = desktop.replace("\n", ";")
+    if mobile == desktop:
+        return f"```lua\n{desktop}\n```"
+    return (f"🖥️ **Desktop**\n```lua\n{desktop}\n```\n"
+            f"📱 **Mobile** (single line — easy to copy)\n```lua\n{mobile}\n```")
+
+
 def _loader_embed(script_name, loadstring, ephemeral_storage):
     e = discord.Embed(title="🚀  Your loader", color=COL_OK,
                       description=(f"Run **{script_name}** on your executor:\n"
-                                   f"```lua\n{loadstring}\n```\n"
+                                   f"{_loader_lines(loadstring)}\n"
                                    "This URL always serves the **latest** version you upload."))
     if ephemeral_storage:
         e.add_field(name="⚠️ Storage not configured",
@@ -695,7 +703,7 @@ class PanelView(discord.ui.View):
             await interaction.followup.send(embed=_err_embed(f"```\n{str(e)[:300]}\n```"), ephemeral=True)
             return
         e = discord.Embed(title="📜  Your loader", color=COL_OK,
-                          description="Copy this into your executor:\n```lua\n" + res["loadstring"] + "\n```")
+                          description="Copy this into your executor:\n" + _loader_lines(res["loadstring"]))
         e.set_footer(text=f"{BRAND} v{__version__}")
         await interaction.followup.send(embed=e, ephemeral=True)
 
@@ -764,7 +772,7 @@ async def panel_cmd(
     project_id: discord.Option(str, description="The public project ID of the script"),
     buyer_role: discord.Option(discord.Role, description="Role to grant verified buyers"),
 ):
-    await ctx.defer()
+    await ctx.defer(ephemeral=True)
     if not _use_api():
         await ctx.respond(embed=_err_embed("Panels need the hosted API — set `OBF_BACKEND=api`."), ephemeral=True)
         return
@@ -773,8 +781,9 @@ async def panel_cmd(
     except Exception as e:
         await ctx.respond(embed=_err_embed(f"```\n{str(e)[:300]}\n```"), ephemeral=True)
         return
-    await ctx.respond(embed=_panel_embed(info.get("name") or "script"),
-                      view=PanelView(project_id, buyer_role.id))
+    await ctx.channel.send(embed=_panel_embed(info.get("name") or "script"),
+                           view=PanelView(project_id, buyer_role.id))
+    await ctx.respond("✅ Control panel posted.", ephemeral=True)
 
 
 def main():
