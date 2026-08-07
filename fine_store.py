@@ -29,8 +29,12 @@ CREATE TABLE IF NOT EXISTS fine_loaders (
     created BIGINT,
     updated BIGINT
 );
-ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS free  BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS owner TEXT;
+ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS free        BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS owner       TEXT;
+ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS source      TEXT;
+ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS panel_title TEXT;
+ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS panel_desc  TEXT;
+ALTER TABLE fine_loaders ADD COLUMN IF NOT EXISTS panel_color TEXT;
 CREATE TABLE IF NOT EXISTS fine_keys (
     key        TEXT PRIMARY KEY,
     project    TEXT NOT NULL,
@@ -81,16 +85,18 @@ def new_key():
 
 # ---------------- loaders / projects ----------------
 
-def save_loader(loader_hash, script_id, code, name, owner=None, free=False):
+def save_loader(loader_hash, script_id, code, name, owner=None, free=False, source=None):
     now = int(time.time())
     record = {"code": code, "sid": script_id, "name": name, "frozen": False,
-              "free": bool(free), "owner": owner, "created": now, "updated": now}
+              "free": bool(free), "owner": owner, "source": source,
+              "panel_title": None, "panel_desc": None, "panel_color": None,
+              "created": now, "updated": now}
     if enabled():
         with _conn() as conn, conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO fine_loaders (hash, sid, code, name, frozen, free, owner, created, updated) "
-                "VALUES (%s, %s, %s, %s, FALSE, %s, %s, %s, %s)",
-                (loader_hash, script_id, code, name, bool(free), owner, now, now))
+                "INSERT INTO fine_loaders (hash, sid, code, name, frozen, free, owner, source, created, updated) "
+                "VALUES (%s, %s, %s, %s, FALSE, %s, %s, %s, %s, %s)",
+                (loader_hash, script_id, code, name, bool(free), owner, source, now, now))
     else:
         _MEM["loaders"][loader_hash] = record
         _MEM["sids"][script_id] = loader_hash
@@ -120,15 +126,32 @@ def resolve_sid(script_id):
     return loader_hash, _MEM["loaders"].get(loader_hash)
 
 
-def update_code(loader_hash, record, code):
+def update_code(loader_hash, record, code, source=None):
     now = int(time.time())
+    if source is None:
+        source = record.get("source")
     if enabled():
         with _conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE fine_loaders SET code = %s, name = %s, updated = %s WHERE hash = %s",
-                        (code, record.get("name"), now, loader_hash))
+            cur.execute("UPDATE fine_loaders SET code = %s, name = %s, source = %s, updated = %s WHERE hash = %s",
+                        (code, record.get("name"), source, now, loader_hash))
     else:
         record["code"] = code
+        record["source"] = source
         record["updated"] = now
+        _MEM["loaders"][loader_hash] = record
+    return record
+
+
+def set_panel(loader_hash, record, title=None, desc=None, color=None):
+    now = int(time.time())
+    record["panel_title"] = title
+    record["panel_desc"] = desc
+    record["panel_color"] = color
+    if enabled():
+        with _conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE fine_loaders SET panel_title = %s, panel_desc = %s, panel_color = %s, updated = %s WHERE hash = %s",
+                        (title, desc, color, now, loader_hash))
+    else:
         _MEM["loaders"][loader_hash] = record
     return record
 
