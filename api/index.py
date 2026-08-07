@@ -17,8 +17,8 @@ _MAX_BYTES = int(os.environ.get("MAX_BYTES", "1000000"))
 _BOT_SECRET = os.environ.get("BOT_SHARED_SECRET")
 
 OWNER_ACTIONS = {"update", "freeze", "unfreeze", "delete", "info", "set_free",
-                 "genkey", "delkey", "listkeys", "whitelist", "blacklist",
-                 "unlist", "listacl"}
+                 "reobfuscate", "set_panel", "genkey", "delkey", "listkeys",
+                 "whitelist", "blacklist", "unlist", "listacl"}
 PANEL_ACTIONS = {"panel_info", "redeem", "get_script", "reset_hwid",
                  "buyer_check", "key_info"}
 
@@ -86,16 +86,92 @@ def _hex_hash(path, query):
     return "".join(c for c in raw if c in "0123456789abcdef")
 
 
+_GW_CACHE = {}
+
+
+def _obf_gateway(base, loader_hash):
+    ck = base + "|" + loader_hash
+    hit = _GW_CACHE.get(ck)
+    if hit is not None:
+        return hit
+    src = _gateway(base, loader_hash)
+    try:
+        out = obfuscate(src, {"target": "executor", "roblox_check": False,
+                              "silent": True, "fast": True})
+    except Exception:
+        out = src
+    if len(_GW_CACHE) > 400:
+        _GW_CACHE.clear()
+    _GW_CACHE[ck] = out
+    return out
+
+
+_SECOND_CHECK = (
+    'do\n'
+    'local HS=game:GetService("HttpService")\n'
+    'local k="" pcall(function() if script_key~=nil then k=tostring(script_key) end end)\n'
+    'if k=="" and getgenv then pcall(function() local g=getgenv().script_key if g~=nil then k=tostring(g) end end) end\n'
+    'local h="" pcall(function() h=tostring(game:GetService("RbxAnalyticsService"):GetClientId()) end)\n'
+    'if h=="" and gethwid then pcall(function() h=tostring(gethwid()) end) end\n'
+    'local ok,b=pcall(function() return game:HttpGet("__BASE__/check/__HASH__?key="..HS:UrlEncode(k).."&hwid="..HS:UrlEncode(h)) end)\n'
+    'if ok and b and #b>0 then local f=loadstring(b) if f then f() end end\n'
+    'end\n')
+
+
+def _second_check(base, loader_hash):
+    return _SECOND_CHECK.replace("__BASE__", base).replace("__HASH__", loader_hash)
+
+
+def _validate(loader_hash, record, key, hwid):
+    if record.get("frozen"):
+        return False, "Fineobf: Script Frozen"
+    if record.get("free"):
+        return True, None
+    if not key:
+        return False, "Fineobf: No Key Provided."
+    krec = fine_store.get_project_key(loader_hash, key)
+    if not krec:
+        return False, "Fineobf: Invalid Key."
+    if krec.get("discord_id") and fine_store.get_acl(loader_hash, krec["discord_id"]) == "black":
+        return False, "Fineobf: Access Revoked."
+    if not hwid:
+        return False, "Fineobf: HWID Unavailable."
+    if not krec.get("hwid"):
+        fine_store.assign_hwid(key, hwid)
+    elif krec.get("hwid") != hwid:
+        return False, "Fineobf: HWID Mismatch"
+    return True, None
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         p = parsed.path
         if p.startswith("/verify/"):
             return self._serve_verify(p, parsed.query)
+        if p.startswith("/check/"):
+            return self._serve_check(p, parsed.query)
         if p.startswith("/loaders/") or p.rstrip("/").endswith("/loader"):
             return self._serve_loader(p, parsed.query)
-        self._json(200, {"name": "fine", "version": __version__, "status": "ok",
-                         "storage": "postgres" if fine_store.enabled() else "ephemeral"})
+        if p in ("/api", "/api/", "/api/index") or p.rstrip("/").endswith("/health"):
+            return self._json(200, {"name": "fine", "version": __version__, "status": "ok",
+                                    "storage": "postgres" if fine_store.enabled() else "ephemeral"})
+        return self._serve_site()
+
+    def _serve_site(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            with open(os.path.join(root, "web", "app.html"), encoding="utf-8") as f:
+                html = f.read().replace("__VERSION__", __version__)
+        except Exception:
+            return self._json(200, {"name": "fine", "version": __version__, "status": "ok"})
+        data = html.encode()
+        self.send_response(200)
+        self.send_header("content-type", "text/html; charset=utf-8")
+        self.send_header("content-length", str(len(data)))
+        self.send_header("access-control-allow-origin", "*")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_loader(self, path, query):
         loader_hash = _hex_hash(path, query)
@@ -109,7 +185,7 @@ class handler(BaseHTTPRequestHandler):
             return self._text(404, "-- not found")
         if record.get("frozen"):
             return self._text(200, _kick("Fineobf: Script Frozen"))
-        self._text(200, _gateway(_base(self), loader_hash))
+        self._text(200, _obf_gateway(_base(self), loader_hash))
 
     def _serve_verify(self, path, query):
         loader_hash = _hex_hash(path, query)
@@ -118,28 +194,30 @@ class handler(BaseHTTPRequestHandler):
         hwid = (q.get("hwid") or [""])[0].strip()
         try:
             record = fine_store.load_loader(loader_hash)
-        except Exception as e:
+        except Exception:
             return self._text(200, _kick("Fineobf: Server Error"))
         if not record:
             return self._text(200, _kick("Fineobf: Invalid Script"))
-        if record.get("frozen"):
-            return self._text(200, _kick("Fineobf: Script Frozen"))
-        if record.get("free"):
-            return self._text(200, record.get("code") or "")
-        if not key:
-            return self._text(200, _kick("Fineobf: No Key Provided."))
-        krec = fine_store.get_project_key(loader_hash, key)
-        if not krec:
-            return self._text(200, _kick("Fineobf: Invalid Key."))
-        if krec.get("discord_id") and fine_store.get_acl(loader_hash, krec["discord_id"]) == "black":
-            return self._text(200, _kick("Fineobf: Access Revoked."))
-        if not hwid:
-            return self._text(200, _kick("Fineobf: HWID Unavailable."))
-        if not krec.get("hwid"):
-            fine_store.assign_hwid(key, hwid)
-        elif krec.get("hwid") != hwid:
-            return self._text(200, _kick("Fineobf: HWID Mismatch"))
+        ok, msg = _validate(loader_hash, record, key, hwid)
+        if not ok:
+            return self._text(200, _kick(msg))
         self._text(200, record.get("code") or "")
+
+    def _serve_check(self, path, query):
+        loader_hash = _hex_hash(path, query)
+        q = parse_qs(query)
+        key = (q.get("key") or [""])[0].strip()
+        hwid = (q.get("hwid") or [""])[0].strip()
+        try:
+            record = fine_store.load_loader(loader_hash)
+        except Exception:
+            return self._text(200, "")
+        if not record:
+            return self._text(200, _kick("Fineobf: Invalid Script") + ';error("f")')
+        ok, msg = _validate(loader_hash, record, key, hwid)
+        if not ok:
+            return self._text(200, _kick(msg) + ';error("f")')
+        self._text(200, "")
 
     def _text(self, code, body):
         data = body.encode()
@@ -185,17 +263,19 @@ class handler(BaseHTTPRequestHandler):
         name = options.get("name") or payload.get("name") or "script"
         free = bool(options.get("free") if options.get("free") is not None else payload.get("free"))
         owner = payload.get("owner")
+
+        loader_hash = hashlib.md5(secrets.token_bytes(16)).hexdigest()
+        script_id = secrets.token_urlsafe(24)
+        build_source = source if free else _second_check(_base(self), loader_hash) + source
         try:
-            output = _build(source, {**options, "name": name})
+            output = _build(build_source, {**options, "name": name})
         except SyntaxError as e:
             return self._json(400, {"error": "syntax error: " + str(e)})
         except Exception as e:
             return self._json(500, {"error": str(e)})
-
-        loader_hash = hashlib.md5(secrets.token_bytes(16)).hexdigest()
-        script_id = secrets.token_urlsafe(24)
         try:
-            fine_store.save_loader(loader_hash, script_id, output, name, owner=owner, free=free)
+            fine_store.save_loader(loader_hash, script_id, output, name,
+                                   owner=owner, free=free, source=source)
         except Exception as e:
             return self._json(502, {"error": "storage unavailable: " + str(e)})
 
@@ -229,6 +309,11 @@ class handler(BaseHTTPRequestHandler):
                 "name": record.get("name"), "project_id": loader_hash, "url": url,
                 "loadstring": _loadstring(url), "frozen": record.get("frozen", False),
                 "free": record.get("free", False), "keys": len(keys),
+                "has_source": bool(record.get("source")),
+                "panel_title": record.get("panel_title"),
+                "panel_desc": record.get("panel_desc"),
+                "panel_color": record.get("panel_color"),
+                "acl": len(fine_store.list_acl(loader_hash)),
                 "created": record.get("created"), "updated": record.get("updated"),
                 "bytes": len(record.get("code") or ""),
             })
@@ -242,20 +327,41 @@ class handler(BaseHTTPRequestHandler):
             free = bool(payload.get("free"))
             fine_store.set_free(loader_hash, record, free)
             return self._json(200, {"free": free})
+        if action == "set_panel":
+            fine_store.set_panel(loader_hash, record, payload.get("title"),
+                                 payload.get("desc"), payload.get("color"))
+            return self._json(200, {"panel": {"title": payload.get("title"),
+                                              "desc": payload.get("desc"),
+                                              "color": payload.get("color")}})
+        if action == "reobfuscate":
+            src = record.get("source")
+            if not src:
+                return self._json(400, {"error": "no stored source; re-upload via 'update' to re-obfuscate"})
+            free = record.get("free")
+            build_source = src if free else _second_check(_base(self), loader_hash) + src
+            try:
+                output = _build(build_source, {"name": record.get("name") or "script"})
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
+            fine_store.update_code(loader_hash, record, output, source=src)
+            return self._json(200, {"reobfuscated": True, "name": record.get("name"),
+                                    "url": url, "loadstring": _loadstring(url), "bytes": len(output)})
         if action == "update":
             source = payload.get("source")
             if not isinstance(source, str) or not source.strip():
                 return self._json(400, {"error": "missing 'source'"})
             options = payload.get("options") or {}
             name = options.get("name") or record.get("name") or "script"
+            free = record.get("free")
+            build_source = source if free else _second_check(_base(self), loader_hash) + source
             try:
-                output = _build(source, {**options, "name": name})
+                output = _build(build_source, {**options, "name": name})
             except SyntaxError as e:
                 return self._json(400, {"error": "syntax error: " + str(e)})
             except Exception as e:
                 return self._json(500, {"error": str(e)})
             record["name"] = name
-            fine_store.update_code(loader_hash, record, output)
+            fine_store.update_code(loader_hash, record, output, source=source)
             return self._json(200, {
                 "updated": True, "name": name, "url": url,
                 "loadstring": _loadstring(url), "output": output, "bytes": len(output),
@@ -306,7 +412,10 @@ class handler(BaseHTTPRequestHandler):
 
         if action == "panel_info":
             return self._json(200, {"name": record.get("name"), "free": record.get("free", False),
-                                    "frozen": record.get("frozen", False)})
+                                    "frozen": record.get("frozen", False),
+                                    "panel_title": record.get("panel_title"),
+                                    "panel_desc": record.get("panel_desc"),
+                                    "panel_color": record.get("panel_color")})
 
         did = str(payload.get("discord_id") or "")
         if not did:

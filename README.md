@@ -13,7 +13,7 @@ The protected file is emitted as a **single physical line**, beginning with an
 inline block-comment header carrying the engine version (`darcobfuscator.__version__`):
 
 ```
---[[ obfuscated with fine v2.9 ]] return (function(...) ... end)(...)
+--[[ obfuscated with fine v11.2 ]] return (function(...) ... end)(...)
 ```
 
 ---
@@ -189,7 +189,7 @@ curl -X POST https://<your-project>.vercel.app/api \
 #     "url": "https://<your-project>.vercel.app/loaders/<md5>.lua",
 #     "loadstring": "loadstring(game:HttpGet(\"…/loaders/<md5>.lua\"))()",
 #     "script_id": "<private key — shown once>",
-#     "output": "--[[ obfuscated with fine v2.9 ]] …",
+#     "output": "--[[ obfuscated with fine v11.2 ]] …",
 #     "bytes": 1234
 #   }
 ```

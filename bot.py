@@ -13,7 +13,7 @@ try:
     from darcobfuscator.obfuscator import obfuscate as _local_obfuscate
 except Exception:
     _local_obfuscate = None
-    __version__ = os.environ.get("FINE_VERSION", "2.9")
+    __version__ = os.environ.get("FINE_VERSION", "11.2")
 
 TOKEN = os.environ.get("TOKEN") or os.environ.get("DISCORD_TOKEN")
 MAX_BYTES = int(os.environ.get("MAX_BYTES", "1000000"))
@@ -83,14 +83,14 @@ def _other(a, b):
 def _bar(pct, width=20):
     pct = max(0.0, min(100.0, pct))
     filled = int(round(pct / 100 * width))
-    return "▰" * filled + "▱" * (width - filled)
+    return "▰"* filled + "▱"* (width - filled)
 
 
 def _human(n):
     n = float(n)
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024 or unit == "GB":
-            return f"{int(n)} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+            return f"{int(n)} {unit}"if unit == "B"else f"{n:.1f} {unit}"
         n /= 1024
 
 
@@ -104,14 +104,14 @@ def _proc_embed(spin, stage, pct):
 def _ok_embed(name, script_name, in_bytes, out_bytes, secs, silent, fast):
     ratio = (out_bytes / in_bytes) if in_bytes else 0
     flags = []
-    flags.append("🤫 silent" if silent else "🔊 prints")
+    flags.append("silent"if silent else "prints")
     if fast:
-        flags.append("⚡ fast")
-    e = discord.Embed(title="✅  Obfuscation complete", color=COL_OK,
+        flags.append("fast")
+    e = discord.Embed(title="Obfuscation complete", color=COL_OK,
                       description=f"**{script_name}** is protected and hosted.")
     e.add_field(name="Source", value=f"`{name}`\n{_human(in_bytes)}", inline=True)
     e.add_field(name="Protected", value=f"{_human(out_bytes)}\n`{ratio:.2f}x`", inline=True)
-    e.add_field(name="Build", value=f"Executor · {secs:.2f}s\n{' · '.join(flags)}", inline=True)
+    e.add_field(name="Build", value=f"Executor · {secs:.2f}s\n{'· '.join(flags)}", inline=True)
     e.set_footer(text=f"{BRAND} v{__version__}  •  single-line • per-build VM")
     return e
 
@@ -120,17 +120,17 @@ def _loader_lines(desktop):
     mobile = desktop.replace("\n", ";")
     if mobile == desktop:
         return f"```lua\n{desktop}\n```"
-    return (f"🖥️ **Desktop**\n```lua\n{desktop}\n```\n"
-            f"📱 **Mobile** (single line — easy to copy)\n```lua\n{mobile}\n```")
+    return (f"**Desktop**\n```lua\n{desktop}\n```\n"
+            f"**Mobile** (tap to copy): `{mobile}`")
 
 
 def _loader_embed(script_name, loadstring, ephemeral_storage):
-    e = discord.Embed(title="🚀  Your loader", color=COL_OK,
+    e = discord.Embed(title="Your loader", color=COL_OK,
                       description=(f"Run **{script_name}** on your executor:\n"
                                    f"{_loader_lines(loadstring)}\n"
                                    "This URL always serves the **latest** version you upload."))
     if ephemeral_storage:
-        e.add_field(name="⚠️ Storage not configured",
+        e.add_field(name="Storage not configured",
                     value=("The API has no database attached, so this loader is **temporary** and "
                            "will vanish on the next redeploy. Attach Neon Postgres "
                            "(`DATABASE_URL`) to persist it."),
@@ -145,17 +145,17 @@ def _key_embed(script_id, project_id=None, free=False):
     if project_id:
         desc += ["", f"**Project ID** (public — for `/panel`):", f"`{project_id}`"]
         if not free:
-            desc += ["🔐 Key required: run **`/keys generate`** to mint keys, then post a "
+            desc += ["Key required: run **`/keys generate`** to mint keys, then post a "
                      "**`/panel`** so buyers can redeem them."]
         else:
-            desc += ["🆓 Free: buyers can run it without a key."]
-    e = discord.Embed(title="🔑  Owner & project keys", color=COL_KEY, description="\n".join(desc))
+            desc += ["Free: buyers can run it without a key."]
+    e = discord.Embed(title="Owner & project keys", color=COL_KEY, description="\n".join(desc))
     e.set_footer(text=f"{BRAND} v{__version__}  •  keep the owner key private")
     return e
 
 
 def _err_embed(msg):
-    e = discord.Embed(title="❌  Could not obfuscate", color=COL_ERR, description=msg)
+    e = discord.Embed(title="Could not obfuscate", color=COL_ERR, description=msg)
     e.set_footer(text=f"{BRAND} v{__version__}")
     return e
 
@@ -164,32 +164,32 @@ def _config_embed(name, silent, fast, free):
     lines = [
         f"**Source:** `{name}`",
         "",
-        f"{'🤫 **Silent Mode** — on (no prints)' if silent else '🔊 **Silent Mode** — off (prints a load banner)'}",
-        f"{'⚡ **Fast Mode** — on' if fast else '🐢 **Fast Mode** — off (full protection)'}",
-        f"{'🆓 **Access** — free (no key required)' if free else '🔐 **Access** — key required (HWID-locked)'}",
+        f"{'**Silent Mode** — on (no prints)'if silent else '**Silent Mode** — off (prints a load banner)'}",
+        f"{'**Fast Mode** — on'if fast else '**Fast Mode** — off (full protection)'}",
+        f"{'**Access** — free (no key required)'if free else '**Access** — key required (HWID-locked)'}",
     ]
     if fast:
-        lines += ["", "⚠️ **Fast Mode drops security checks** for a quicker load. "
+        lines += ["", "**Fast Mode drops security checks** for a quicker load. "
                   "Your script is easier to analyze — only use it if load time matters."]
     if not free:
-        lines += ["", "🔐 With a key required, generate keys with **`/keys`** and give buyers a "
+        lines += ["", "With a key required, generate keys with **`/keys`** and give buyers a "
                   "**`/panel`** to redeem them. Each key is HWID-locked on first run."]
     lines += ["", "Toggle the options, then press **Name & obfuscate**."]
-    e = discord.Embed(title="🎛️  Configure your build", color=COL_PROC, description="\n".join(lines))
+    e = discord.Embed(title="Configure your build", color=COL_PROC, description="\n".join(lines))
     e.set_footer(text=f"{BRAND} v{__version__}  •  executor build")
     return e
 
 
 def _help_embed():
     e = discord.Embed(
-        title=f"\U0001f512  {BRAND} obfuscator",
+        title=f"{BRAND} obfuscator",
         color=COL_IDLE,
         description=(
             "**DM me a `.lua` / `.luau` file** and I'll protect it, host it, and hand you a"
-            " ready-to-run **loadstring**.\n\n"
+            "ready-to-run **loadstring**.\n\n"
             "• Pick a **name**, then toggle **Silent** / **Fast** mode.\n"
             "• You get a private **script key** to update, freeze, or delete your script"
-            " with `/manage` — the loadstring never changes.\n"
+            "with `/manage` — the loadstring never changes.\n"
             "• Use **`/obfuscate`** in a server for the same flow (ephemeral)."
         ),
     )
@@ -324,7 +324,7 @@ async def _do(responder, session):
         key_embed = _key_embed(script_id, result.get("project_id"), session.free) if script_id else None
     else:
         loader_embed = discord.Embed(
-            title="📦  Protected file ready", color=COL_OK,
+            title="Protected file ready", color=COL_OK,
             description=("Hosting is off, so there's no loadstring or script key.\n"
                          "Set **`OBF_BACKEND=api`** and **`API_URL`** to get a hosted loader."))
         loader_embed.set_footer(text=f"{BRAND} v{__version__}")
@@ -380,25 +380,25 @@ class ConfigView(discord.ui.View):
                                 self.session.fast, self.session.free),
             view=self)
 
-    @discord.ui.button(label="Silent Mode", emoji="🤫", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Silent Mode", style=discord.ButtonStyle.secondary)
     async def toggle_silent(self, a, b):
         interaction = _interaction(a, b)
         self.session.silent = not self.session.silent
         await self._refresh(interaction)
 
-    @discord.ui.button(label="Fast Mode", emoji="⚡", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Fast Mode", style=discord.ButtonStyle.secondary)
     async def toggle_fast(self, a, b):
         interaction = _interaction(a, b)
         self.session.fast = not self.session.fast
         await self._refresh(interaction)
 
-    @discord.ui.button(label="Free / Key", emoji="🔐", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Free / Key", style=discord.ButtonStyle.secondary)
     async def toggle_free(self, a, b):
         interaction = _interaction(a, b)
         self.session.free = not self.session.free
         await self._refresh(interaction)
 
-    @discord.ui.button(label="Name & obfuscate", emoji="✅", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Name & obfuscate", style=discord.ButtonStyle.success)
     async def go(self, a, b):
         interaction = _interaction(a, b)
         await interaction.response.send_modal(NameModal(self.session))
@@ -419,24 +419,23 @@ class ResultView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Freeze", emoji="❄️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Freeze", style=discord.ButtonStyle.secondary)
     async def freeze(self, a, b):
         interaction = _interaction(a, b)
         button = _other(a, b)
-        action = "unfreeze" if self.frozen else "freeze"
+        action = "unfreeze"if self.frozen else "freeze"
         try:
             await _api_manage({"action": action, "script_id": self.script_id})
         except Exception as e:
             await interaction.response.send_message(embed=_err_embed(f"```\n{str(e)[:300]}\n```"), ephemeral=True)
             return
         self.frozen = not self.frozen
-        button.label = "Unfreeze" if self.frozen else "Freeze"
-        button.emoji = "▶️" if self.frozen else "❄️"
-        note = "frozen — the loadstring now returns a notice" if self.frozen else "live again"
+        button.label = "Unfreeze"if self.frozen else "Freeze"
+        note = "frozen — the loadstring now returns a notice"if self.frozen else "live again"
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"❄️ **{self.script_name}** is {note}.", ephemeral=True)
+        await interaction.followup.send(f"**{self.script_name}** is {note}.", ephemeral=True)
 
-    @discord.ui.button(label="Delete", emoji="🗑️", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, a, b):
         interaction = _interaction(a, b)
         try:
@@ -447,13 +446,13 @@ class ResultView(discord.ui.View):
         for c in self.children:
             c.disabled = True
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"🗑️ **{self.script_name}** deleted — the loadstring is now dead.", ephemeral=True)
+        await interaction.followup.send(f"**{self.script_name}** deleted — the loadstring is now dead.", ephemeral=True)
 
 
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.watching, name="your DMs for scripts \U0001f512"))
+        type=discord.ActivityType.watching, name="your DMs for scripts"))
     print(f"{BRAND} bot online as {bot.user} (v{__version__}) backend={OBF_BACKEND}")
 
 
@@ -542,28 +541,28 @@ async def manage_cmd(
         return
 
     if action == "info":
-        e = discord.Embed(title="ℹ️  Script info", color=COL_IDLE,
+        e = discord.Embed(title="Script info", color=COL_IDLE,
                           description=(f"**{res.get('name')}**\n"
                                        f"```lua\n{res.get('loadstring')}\n```"))
         e.add_field(name="Project ID", value=f"`{res.get('project_id')}`", inline=False)
-        e.add_field(name="Access", value="🆓 free" if res.get("free") else "🔐 key required", inline=True)
+        e.add_field(name="Access", value="free"if res.get("free") else "key required", inline=True)
         e.add_field(name="Keys", value=str(res.get("keys", 0)), inline=True)
-        e.add_field(name="Frozen", value="yes" if res.get("frozen") else "no", inline=True)
+        e.add_field(name="Frozen", value="yes"if res.get("frozen") else "no", inline=True)
         e.set_footer(text=f"{BRAND} v{__version__}")
         await ctx.respond(embed=e, ephemeral=True)
     elif action == "update":
         e = _loader_embed(res.get("name"), res.get("loadstring"), False)
-        e.title = "🔄  Script updated"
+        e.title = "Script updated"
         await ctx.respond(embed=e, ephemeral=True)
     elif action in ("freeze", "unfreeze"):
-        state = "frozen" if action == "freeze" else "live again"
-        await ctx.respond(f"{'❄️' if action == 'freeze' else '▶️'} Script is now **{state}**.", ephemeral=True)
+        state = "frozen"if action == "freeze"else "live again"
+        await ctx.respond(f"Script is now **{state}**.", ephemeral=True)
     elif action in ("free", "paid"):
-        msg = ("🆓 Script is now **free** — no key required." if res.get("free")
-               else "🔐 Script now **requires a key** (HWID-locked).")
+        msg = ("Script is now **free** — no key required."if res.get("free")
+               else "Script now **requires a key** (HWID-locked).")
         await ctx.respond(msg, ephemeral=True)
     elif action == "delete":
-        await ctx.respond("🗑️ Script **deleted** — its loadstring is now dead.", ephemeral=True)
+        await ctx.respond("Script **deleted** — its loadstring is now dead.", ephemeral=True)
 
 
 @bot.slash_command(name="keys", description="Generate, list or delete keys for your script", guild_ids=GUILD_IDS)
@@ -584,8 +583,8 @@ async def keys_cmd(
             res = await _api_manage({"action": "genkey", "script_id": script_id,
                                      "count": max(1, min(amount, 100)), "label": label})
             keys = res.get("keys", [])
-            e = discord.Embed(title=f"🔑  Generated {len(keys)} key(s)", color=COL_KEY,
-                              description="```\n" + "\n".join(keys) + "\n```\nShare these with buyers to redeem.")
+            e = discord.Embed(title=f"Generated {len(keys)} key(s)", color=COL_KEY,
+                              description="```\n"+ "\n".join(keys) + "\n```\nShare these with buyers to redeem.")
             e.set_footer(text=f"{BRAND} v{__version__}")
             await ctx.respond(embed=e, ephemeral=True)
         elif action == "list":
@@ -594,9 +593,9 @@ async def keys_cmd(
             if not ks:
                 await ctx.respond("No keys yet — generate some with `/keys generate`.", ephemeral=True)
                 return
-            lines = [f"`{k['key']}` — {'🔒 bound' if k['hwid_bound'] else '🆕 unused'}"
-                     + (f" · <@{k['discord_id']}>" if k.get("discord_id") else "") for k in ks[:40]]
-            e = discord.Embed(title=f"🔑  {len(ks)} key(s)", color=COL_KEY, description="\n".join(lines))
+            lines = [f"`{k['key']}` — {'bound'if k['hwid_bound'] else 'unused'}"
+                     + (f"· <@{k['discord_id']}>"if k.get("discord_id") else "") for k in ks[:40]]
+            e = discord.Embed(title=f"{len(ks)} key(s)", color=COL_KEY, description="\n".join(lines))
             e.set_footer(text=f"{BRAND} v{__version__}")
             await ctx.respond(embed=e, ephemeral=True)
         elif action == "delete":
@@ -604,7 +603,7 @@ async def keys_cmd(
                 await ctx.respond(embed=_err_embed("Provide the `key` to delete."), ephemeral=True)
                 return
             res = await _api_manage({"action": "delkey", "script_id": script_id, "key": key})
-            await ctx.respond("🗑️ Key deleted." if res.get("deleted") else "Key not found.", ephemeral=True)
+            await ctx.respond("Key deleted."if res.get("deleted") else "Key not found.", ephemeral=True)
     except Exception as e:
         await ctx.respond(embed=_err_embed(f"```\n{str(e)[:400]}\n```"), ephemeral=True)
 
@@ -627,16 +626,16 @@ async def access_cmd(
             if not acl:
                 await ctx.respond("No whitelist/blacklist entries.", ephemeral=True)
                 return
-            lines = [f"{'✅' if a['status'] == 'white' else '⛔'} <@{a['discord_id']}> — {a['status']}" for a in acl]
-            e = discord.Embed(title="🛂  Access list", color=COL_IDLE, description="\n".join(lines))
+            lines = [f"<@{a['discord_id']}> — {a['status']}" for a in acl]
+            e = discord.Embed(title="Access list", color=COL_IDLE, description="\n".join(lines))
             await ctx.respond(embed=e, ephemeral=True)
             return
         if user is None:
             await ctx.respond(embed=_err_embed("Pick a `user`."), ephemeral=True)
             return
-        act = "unlist" if action == "clear" else action
+        act = "unlist"if action == "clear"else action
         await _api_manage({"action": act, "script_id": script_id, "discord_id": str(user.id)})
-        verb = {"whitelist": "whitelisted ✅", "blacklist": "blacklisted ⛔", "clear": "removed from the list"}[action]
+        verb = {"whitelist": "whitelisted ", "blacklist": "blacklisted ", "clear": "removed from the list"}[action]
         await ctx.respond(f"<@{user.id}> {verb}.", ephemeral=True)
     except Exception as e:
         await ctx.respond(embed=_err_embed(f"```\n{str(e)[:400]}\n```"), ephemeral=True)
@@ -646,14 +645,21 @@ PANEL_BLURB = ("Redeem your key, grab your loader, and manage your HWID — all 
                "Each key locks to your device on first launch.")
 
 
-def _panel_embed(name):
-    e = discord.Embed(title=f"🎛️  Control Panel for {name}", color=COL_PROC, description=PANEL_BLURB)
-    e.add_field(name="🔑 Redeem Key", value="Bind a key to your account.", inline=True)
-    e.add_field(name="📜 Get Script", value="Your ready-to-run loadstring.", inline=True)
-    e.add_field(name="♻️ Reset HWID", value="Once every 2 days.", inline=True)
-    e.add_field(name="🎟️ Get Buyer Role", value="Unlock the buyer role.", inline=True)
-    e.add_field(name="ℹ️ Key Info", value="Check your key status.", inline=True)
-    e.set_footer(text=f"{BRAND} v{__version__}  •  public control panel")
+def _panel_embed(name, title=None, desc=None, color=None):
+    col = COL_PROC
+    if color:
+        try:
+            col = int(str(color).lstrip("#"), 16)
+        except Exception:
+            col = COL_PROC
+    e = discord.Embed(title=(title or f"Control Panel for {name}"),
+                      color=col, description=(desc or PANEL_BLURB))
+    e.add_field(name="Redeem Key", value="Bind a key to your account.", inline=True)
+    e.add_field(name="Get Script", value="Your ready-to-run loadstring.", inline=True)
+    e.add_field(name="Reset HWID", value="Once every 2 days.", inline=True)
+    e.add_field(name="Get Buyer Role", value="Unlock the buyer role.", inline=True)
+    e.add_field(name="Key Info", value="Check your key status.", inline=True)
+    e.set_footer(text=f"{BRAND} v{__version__}")
     return e
 
 
@@ -673,7 +679,7 @@ class RedeemModal(discord.ui.Modal):
         except Exception as e:
             await interaction.followup.send(embed=_err_embed(f"```\n{str(e)[:300]}\n```"), ephemeral=True)
             return
-        await interaction.followup.send("✅ Key redeemed! Use **Get Script** to grab your loader.", ephemeral=True)
+        await interaction.followup.send("Key redeemed! Use **Get Script** to grab your loader.", ephemeral=True)
 
 
 class PanelView(discord.ui.View):
@@ -688,12 +694,12 @@ class PanelView(discord.ui.View):
             payload.update(extra)
         return await _api_manage(payload)
 
-    @discord.ui.button(label="Redeem Key", emoji="🔑", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Redeem Key", style=discord.ButtonStyle.primary)
     async def redeem(self, a, b):
         interaction = _interaction(a, b)
         await interaction.response.send_modal(RedeemModal(self.project))
 
-    @discord.ui.button(label="Get Script", emoji="📜", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Get Script", style=discord.ButtonStyle.success)
     async def get_script(self, a, b):
         interaction = _interaction(a, b)
         await interaction.response.defer(ephemeral=True)
@@ -702,12 +708,12 @@ class PanelView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(embed=_err_embed(f"```\n{str(e)[:300]}\n```"), ephemeral=True)
             return
-        e = discord.Embed(title="📜  Your loader", color=COL_OK,
-                          description="Copy this into your executor:\n" + _loader_lines(res["loadstring"]))
+        e = discord.Embed(title="Your loader", color=COL_OK,
+                          description="Copy this into your executor:\n"+ _loader_lines(res["loadstring"]))
         e.set_footer(text=f"{BRAND} v{__version__}")
         await interaction.followup.send(embed=e, ephemeral=True)
 
-    @discord.ui.button(label="Reset HWID", emoji="♻️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Reset HWID", style=discord.ButtonStyle.secondary)
     async def reset_hwid(self, a, b):
         interaction = _interaction(a, b)
         await interaction.response.defer(ephemeral=True)
@@ -717,9 +723,9 @@ class PanelView(discord.ui.View):
             msg = str(e)
             await interaction.followup.send(embed=_err_embed(f"```\n{msg[:300]}\n```"), ephemeral=True)
             return
-        await interaction.followup.send("♻️ HWID reset — your key rebinds on next launch.", ephemeral=True)
+        await interaction.followup.send("HWID reset — your key rebinds on next launch.", ephemeral=True)
 
-    @discord.ui.button(label="Get Buyer Role", emoji="🎟️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Get Buyer Role", style=discord.ButtonStyle.secondary)
     async def buyer_role(self, a, b):
         interaction = _interaction(a, b)
         await interaction.response.defer(ephemeral=True)
@@ -741,9 +747,9 @@ class PanelView(discord.ui.View):
         except discord.Forbidden:
             await interaction.followup.send("I can't assign that role — move my role above it and grant Manage Roles.", ephemeral=True)
             return
-        await interaction.followup.send(f"🎟️ You now have **{role.name}**.", ephemeral=True)
+        await interaction.followup.send(f"You now have **{role.name}**.", ephemeral=True)
 
-    @discord.ui.button(label="Key Info", emoji="ℹ️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Key Info", style=discord.ButtonStyle.secondary)
     async def key_info(self, a, b):
         interaction = _interaction(a, b)
         await interaction.response.defer(ephemeral=True)
@@ -753,14 +759,14 @@ class PanelView(discord.ui.View):
             await interaction.followup.send(embed=_err_embed(f"```\n{str(e)[:300]}\n```"), ephemeral=True)
             return
         if not res.get("redeemed"):
-            txt = "🆓 This script is free — no key needed." if res.get("free") else "You have not redeemed a key yet."
+            txt = "This script is free — no key needed."if res.get("free") else "You have not redeemed a key yet."
             await interaction.followup.send(txt, ephemeral=True)
             return
         reset_in = res.get("reset_in", 0)
-        reset_txt = "available now" if reset_in == 0 else f"in {reset_in // 3600}h {(reset_in % 3600) // 60}m"
-        e = discord.Embed(title="ℹ️  Your key", color=COL_KEY,
+        reset_txt = "available now"if reset_in == 0 else f"in {reset_in // 3600}h {(reset_in % 3600) // 60}m"
+        e = discord.Embed(title="Your key", color=COL_KEY,
                           description=(f"`{res.get('key')}`\n"
-                                       f"HWID: {'🔒 bound' if res.get('hwid_bound') else '🆕 not bound'}\n"
+                                       f"HWID: {'bound'if res.get('hwid_bound') else 'not bound'}\n"
                                        f"HWID reset: {reset_txt}"))
         e.set_footer(text=f"{BRAND} v{__version__}")
         await interaction.followup.send(embed=e, ephemeral=True)
@@ -781,9 +787,11 @@ async def panel_cmd(
     except Exception as e:
         await ctx.respond(embed=_err_embed(f"```\n{str(e)[:300]}\n```"), ephemeral=True)
         return
-    await ctx.channel.send(embed=_panel_embed(info.get("name") or "script"),
-                           view=PanelView(project_id, buyer_role.id))
-    await ctx.respond("✅ Control panel posted.", ephemeral=True)
+    await ctx.channel.send(
+        embed=_panel_embed(info.get("name") or "script", info.get("panel_title"),
+                           info.get("panel_desc"), info.get("panel_color")),
+        view=PanelView(project_id, buyer_role.id))
+    await ctx.respond("Control panel posted.", ephemeral=True)
 
 
 def main():

@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/index.py": {
-      "includeFiles": "{darcobfuscator/**,fine_store.py}"
+      "includeFiles": "{darcobfuscator/**,fine_store.py,web/**}"
     }
   },
   "rewrites": [
