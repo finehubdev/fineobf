@@ -11,6 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from darcobfuscator import __version__
 from darcobfuscator.obfuscator import obfuscate
 import fine_store
+try:
+    import web_app
+except Exception:
+    web_app = None
 
 _ALLOWED = {"name", "silent", "fast", "rename", "on_fail", "seed"}
 _MAX_BYTES = int(os.environ.get("MAX_BYTES", "1000000"))
@@ -153,18 +157,23 @@ class handler(BaseHTTPRequestHandler):
             return self._serve_check(p, parsed.query)
         if p.startswith("/loaders/") or p.rstrip("/").endswith("/loader"):
             return self._serve_loader(p, parsed.query)
-        if p in ("/api", "/api/", "/api/index") or p.rstrip("/").endswith("/health"):
+        if p in ("/api", "/api/") or p.rstrip("/").endswith("/health"):
             return self._json(200, {"name": "fine", "version": __version__, "status": "ok",
                                     "storage": "postgres" if fine_store.enabled() else "ephemeral"})
         return self._serve_site()
 
     def _serve_site(self):
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        try:
-            with open(os.path.join(root, "web", "app.html"), encoding="utf-8") as f:
-                html = f.read().replace("__VERSION__", __version__)
-        except Exception:
-            return self._json(200, {"name": "fine", "version": __version__, "status": "ok"})
+        html = None
+        if web_app is not None:
+            html = web_app.HTML
+        if html is None:
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            try:
+                with open(os.path.join(root, "web", "app.html"), encoding="utf-8") as f:
+                    html = f.read()
+            except Exception:
+                html = "<!doctype html><title>fine</title><h1>fine</h1><p>Control panel unavailable.</p>"
+        html = html.replace("__VERSION__", __version__)
         data = html.encode()
         self.send_response(200)
         self.send_header("content-type", "text/html; charset=utf-8")
