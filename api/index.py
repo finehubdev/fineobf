@@ -150,14 +150,22 @@ def _validate(loader_hash, record, key, hwid):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
-        p = parsed.path
+        query = parsed.query
+        q = parse_qs(query, keep_blank_values=True)
+        # On Vercel every request is rewritten to /api/index with the original
+        # path carried in ?vpath=... . Locally (no rewrite) fall back to the path.
+        if "vpath" in q:
+            vp = q["vpath"][0]
+            p = "/" + vp.lstrip("/") if vp and vp != ":vpath*" else "/"
+        else:
+            p = parsed.path
         if p.startswith("/verify/"):
-            return self._serve_verify(p, parsed.query)
+            return self._serve_verify(p, query)
         if p.startswith("/check/"):
-            return self._serve_check(p, parsed.query)
+            return self._serve_check(p, query)
         if p.startswith("/loaders/") or p.rstrip("/").endswith("/loader"):
-            return self._serve_loader(p, parsed.query)
-        if p in ("/api", "/api/") or p.rstrip("/").endswith("/health"):
+            return self._serve_loader(p, query)
+        if p in ("/api", "/api/", "/api/index") or p.rstrip("/").endswith("/health"):
             return self._json(200, {"name": "fine", "version": __version__, "status": "ok",
                                     "storage": "postgres" if fine_store.enabled() else "ephemeral"})
         return self._serve_site()
